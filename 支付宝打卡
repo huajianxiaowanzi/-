@@ -10,15 +10,10 @@ from email.mime.text import MIMEText
 from email.header import Header
 
 from_addr='b1695316070@163.com'   #邮件发送账号
-qqCode='MTBALBLNWGIYCEIP'   #授权码（这个要填自己获取到的）
-smtp_server='smtp.163.com'#固定写死
+qqCode='ALBLNWGIYCEIP'   #授权码（这个要填自己获取到的）
+smtp_server='smtp.163.com'#
 smtp_port=465#固定端口
 
-#a1695316070@163.com
-#2821681721@qq.com
-#2523361773@qq.com
-
-#
 to_addrs=['2821681721@qq.com','2523361773@qq.com','1695316070@qq.com']  #接收邮件账号
 
 #配置服务器
@@ -61,7 +56,7 @@ def init():
     except FileNotFoundError:
         print("user.csv 未找到!")
 
-users=[['4136010406','李秀敏',20208215],['4136010406','张钦禹',20208230]]
+users=[['4136010477','李xx',20193115],['4136010477','张xx',20198220]]
 userNumber=2
 
 def start():
