@@ -1,0 +1,216 @@
+import csv
+import hashlib
+import json
+import sys
+
+import jieba
+import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
+
+from_addr='b1695316070@163.com'   #邮件发送账号
+qqCode='MTBALBLNWGIYCEIP'   #授权码（这个要填自己获取到的）
+smtp_server='smtp.163.com'#固定写死
+smtp_port=465#固定端口
+
+#a1695316070@163.com
+#2821681721@qq.com
+#2523361773@qq.com
+
+#
+to_addrs=['2821681721@qq.com','2523361773@qq.com','1695316070@qq.com']  #接收邮件账号
+
+#配置服务器
+stmp=smtplib.SMTP_SSL(smtp_server,smtp_port)
+stmp.login(from_addr,qqCode)
+
+jieba.setLogLevel(20)
+
+userNumber = 0
+users = []
+a=1
+
+def getHelp():
+    """
+    打印帮助信息
+    :return:
+    """
+    print("""使用方法:
+  可选添加参数: i, s, h.
+  i: 插入用户
+  s: 开始签到
+  h: 显示帮助
+  如果未添加参数启动则会根据用户数量自动操作.
+    """)
+
+
+def init():
+    """
+    初始化, 预读取帐号文件
+    :return:
+    """
+    global userNumber
+    global users
+    try:
+        with open("user.csv", 'r', newline="", encoding="utf-8") as readfile:
+            reader = csv.reader(readfile)
+            for each in reader:
+                users.append(each)
+                userNumber = userNumber + 1
+    except FileNotFoundError:
+        print("user.csv 未找到!")
+
+users=[['4136010406','李秀敏',20208215],['4136010406','张钦禹',20208230]]
+userNumber=2
+
+def start():
+    print(f"当前共有{userNumber}名用户, 开始签到...")
+    for item in users:
+        ts = Task(item[0], item[1], item[2])
+        ts.start()
+
+def emall():
+    # 组装发送内容
+    message = MIMEText('hello', 'plain', 'utf-8')  # 发送的内容
+    message['From'] = Header("大飞", 'utf-8')  # 发件人
+    message['To'] = Header("小明", 'utf-8')  # 收件人
+    subject = '支付宝已打卡'
+    message['Subject'] = Header(subject, 'utf-8')  # 邮件标题
+    try:
+        stmp.sendmail(from_addr, to_addrs, message.as_string())
+    except Exception as e:
+        print('邮件发送失败--' + str(e))
+    print('邮件发送成功')
+
+def emall1():
+    # 组装发送内容
+    message = MIMEText('hello', 'plain', 'utf-8')  # 发送的内容
+    message['From'] = Header("大飞", 'utf-8')  # 发件人
+    message['To'] = Header("小明", 'utf-8')  # 收件人
+    subject = '支付宝打卡失败！！！'
+    message['Subject'] = Header(subject, 'utf-8')  # 邮件标题
+    try:
+        stmp.sendmail(from_addr, to_addrs, message.as_string())
+    except Exception as e:
+        print('邮件发送失败--' + str(e))
+    print('邮件发送成功')
+
+def insert():
+    count = int(input("请输入欲录入用户的用户个数: "))
+    with open("user.csv", 'a+', newline="", encoding="utf-8") as writefile:
+        for item in range(count):
+            scId = input("请输入院校代码: ")
+            name = input("请输入姓名: ")
+            oneCard = input("请输入一卡通号码: ")
+            writefile.write(scId + "," + name + "," + oneCard + "\n")
+
+
+class Task(object):
+
+    def __init__(self, schoolId, name, oneCard):
+        self.__scId = schoolId
+        self.__name = name
+        self.__oneCard = oneCard
+        self.__md5 = hashlib.md5(str(oneCard).encode(encoding='UTF-8')).hexdigest()
+        self.__session = requests.session()
+        self.__flag = False
+
+    def start(self):
+        self.__login()
+        if not self.__flag:
+            print("登陆失败, 正在尝试注册...")
+            self.__register()
+        if self.__flag:
+            self.__getLastResult()
+            self.__signIn()
+            global a
+            a += 1
+        else:
+            print(f"出错了, 请检查输入的内容, 已跳过当前用户: {self.__name}...")
+
+    def __register(self):
+        url = "https://xycr.jx.edu.cn/public/registerSchool?"
+        data = f"schoolNo={self.__scId}&xhOrZgh={self.__oneCard}&sfzMd5={self.__md5}" \
+               f"&cardId={self.__oneCard}&xm=&loginXm={self.__name}"
+        result = json.loads(self.__session.post(url + data).text)
+        if str(result['code']) == "1002":
+            self.__flag = False
+        else:
+            print(result['msg'])
+            self.__login()
+
+    def __login(self):
+        """
+        session登录
+        :return: 登陆结果
+        """
+        self.__session.get(
+            f"https://fxgl.jx.edu.cn/{self.__scId}/third/alipayLogin?cardId={self.__oneCard}&sfzMd5={self.__md5}")
+        try:
+            result = self.__session.cookies['loginName']
+            self.__flag = True
+            print(result + " - 登陆成功!")
+        except KeyError:
+            self.__flag = False
+
+    def __getLastResult(self):
+        """
+        自动获取上次打卡所在位置, 包括经纬度以及地点
+        :return: None
+        """
+        url = f"https://fxgl.jx.edu.cn/{self.__scId}/studentQd/pageStudentQdInfoByXh"
+        data = {
+            "page": "1",
+            "size": "1"
+        }
+        data = json.loads(self.__session.post(url, data=data).text)['data']['list'][0]
+        self.__lng = data['lng']
+        self.__lat = data['lat']
+        url = f"https://fxgl.jx.edu.cn/{self.__scId}/studentQd/getLocationByQdId"
+        data = {
+            "id": data['id']
+        }
+        location = jieba.lcut(json.loads(self.__session.post(url, data=data).text)['data'])
+        self.__province = location[0]
+        self.__city = location[1]
+        self.__street = location[2]
+
+    def __signIn(self):
+        """
+        利用上次打卡的位置, 模拟打卡
+        :return: 服务器返回的信息
+        """
+        url = f"https://fxgl.jx.edu.cn/{self.__scId}/studentQd/saveStu"
+        data = f"?province={self.__province}&city={self.__city}&district={self.__street}&street=" \
+               f"&xszt=0&jkzk=0&jkzkxq=&sfgl=1&gldd=&mqtw=0&mqtwxq=&zddlwz={self.__province}{self.__city}{self.__street}" \
+               f"&sddlwz=&bprovince={self.__province}&bcity={self.__city}&bdistrict={self.__street}&bstreet=" \
+               f"&sprovince={self.__province}&scity={self.__city}&sdistrict={self.__street}" \
+               f"&lng={self.__lng}&lat={self.__lat}&sfby=1"
+        print(json.loads(self.__session.post(url + data).text)['msg'])
+
+if __name__ == '__main__':
+
+    init()
+
+    try:
+        args = sys.argv[1]
+        if args == "s":
+            start()
+        elif args == "i":
+            insert()
+        else:
+            getHelp()
+    except IndexError:
+        if userNumber != 0:
+            start()
+
+        else:
+            getHelp()
+            insert()
+
+    if a==1:
+        emall1()  #打卡失败
+    else:
+        emall()  #打卡成功
+ 
